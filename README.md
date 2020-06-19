@@ -28,3 +28,4 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 ## References
 * [Jira Cloud REST API V2](https://developer.atlassian.com/cloud/jira/platform/rest/v2/)
 * [JQL Formatting](https://support.atlassian.com/jira-service-desk-cloud/docs/use-advanced-search-with-jira-query-language-jql/)
+* [MaxResults is not part of API spec](https://confluence.atlassian.com/jirakb/changing-maxresults-parameter-for-jira-cloud-rest-api-779160706.html)

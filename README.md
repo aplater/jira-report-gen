@@ -1,4 +1,4 @@
-# Jira CSV Report Generator
+# Jira Excel Report Generator
 
 Python script to search Jira tickets using JQL. Returned tickets will match the search string and customer organization provided as command arguments. A generated XLSX of the records will be emailed using the SMTP values provided by runtime arguments.
 

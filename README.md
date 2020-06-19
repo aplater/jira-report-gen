@@ -12,7 +12,7 @@ As currently defined in [main.py](main.py), results will be from the EXAMPLE pro
 
 ### Prerequisites
 
-* Python 3.8+
+* Python 3.X+
   * [pandas](https://pandas.pydata.org/)
   * [Requests](https://2.python-requests.org/en/master/)
 * SMTP server with anonymous relay enabled

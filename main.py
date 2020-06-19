@@ -17,8 +17,10 @@ from email.mime.application import MIMEApplication
 
 JIRA_API_TOKEN='<API TOKEN>'
 JIRA_API_USERNAME='<API TOKEN OWNER USERNAME>'
-SEARCH_URL = 'https://<SITE-URL>/rest/api/2/search'
-# Jira Cloud API V2 ref: https://developer.atlassian.com/cloud/jira/platform/rest/v2/
+SEARCH_URL = 'https://<SITE-URL>/rest/api/2/search' # Jira Cloud API V2 ref: https://developer.atlassian.com/cloud/jira/platform/rest/v2/
+
+# Set to true to delete spreadsheet after it is emailed
+CLEANUP_FILE=False
 
 parser = argparse.ArgumentParser(description="Collect Jira faults and export to CSV")
 parser.add_argument("customer", type=str, help="Customer name (as in Jira)")
@@ -42,7 +44,8 @@ paramstring1 = "project = EXAMPLE AND Organizations="+args.customer+" AND create
 paramstring2 = "key,status,summary,description,creator,created,updated"
 
 # Define parameter string for requests.get
-searchParams = {'jql':paramstring1,'fields':paramstring2}
+# Add maxResults parameter
+searchParams = {'jql':paramstring1,'fields':paramstring2,'maxResults':10000}
 
 #get tenant detail JSON
 searchResponse = requests.get(SEARCH_URL, params=searchParams, auth=(JIRA_API_USERNAME, JIRA_API_TOKEN))
@@ -55,10 +58,8 @@ if searchResponse.status_code != 200:
 
 # Parse JSON response
 searchResults = searchResponse.json()
-#print(searchResults)
 
-# Results returned may be zero
-# If so, send email stating as such to distinguish from case where report failed to generate/send
+# Results returned may be zero - If so, send email stating as such to distinguish from case where report failed to generate/send
 if searchResults['total'] == 0:
     #TODO: Encapsulate sendmail in function
 
@@ -87,8 +88,40 @@ if searchResults['total'] == 0:
     server.close()
     sys.exit(0)
 
-# Normalize JSON, delete unecessary columns
+#Jira API now only returns 100 results per page, which can change again at any time with no notice from Atlassian (╯°□°）╯︵ ┻━┻)
+#   Reference https://confluence.atlassian.com/jirakb/changing-maxresults-parameter-for-jira-cloud-rest-api-779160706.html
+
+#Calculate how many additional pages are needed and grab the max results returned from Jira
+additional_page_count = searchResults['total'] // searchResults['maxResults']
+max_results = searchResults['maxResults']
+
+# Normalize JSON to dataframe, Pandas will be used to append any paginated results
 searchResults = json_normalize(searchResults['issues'])
+
+# Run additional queries to get paginated results
+# TODO: Wrap in function, current implementation will hard exit if paginated query fails. Desired action: Catch error, continue and  notify in body that results may not be complete
+if additional_page_count != 0:
+    i=1
+    while i <= additional_page_count:
+        starting_issue = i*max_results
+        paginated_params = {'jql':paramstring1,"maxResults":10000,'fields':paramstring2,'startAt':starting_issue}
+        paginated_response = requests.get(SEARCH_URL, params=paginated_params, auth=(JIRA_API_USERNAME, JIRA_API_TOKEN))
+
+        if paginated_response.status_code != 200:
+            print("Paginated API call not successful", file=sys.stderr)
+            print(searchResponse.status_code, file=sys.stderr)
+            sys.exit(1)
+
+        # Parse JSON response and normalize
+        paginated_results = paginated_response.json()
+        paginated_results = json_normalize(paginated_results['issues'])
+
+        # Append page i of results to existing dataframe
+        searchResults = searchResults.append(paginated_results, ignore_index = True)
+
+        i += 1
+
+# TODO: Clean up this brute force mess
 if 'id' in searchResults:
     del searchResults['id']
 if 'expand' in searchResults:
@@ -137,11 +170,11 @@ searchResults.rename(columns={'key':'Ticket Number','fields.summary':'Summary','
 newIndex = ['Ticket Number','Status','Summary','Description','Created Time','Updated Time','Creator Name','Creator Email']
 searchResults = searchResults[newIndex]
 
-#Generate filename and export CSV
+#Generate filename and export XLSX
 now = datetime.now()
 now = now.strftime('%Y.%m.%d_%H.%M')
-outputFileName = args.description + "." + now +'.csv'
-searchResults.to_csv(outputFileName,index=False)
+outputFileName = args.description + "." + now +'.xlsx'
+searchResults.to_excel(outputFileName,index=False)
 
 # Build a subject string and body
 subject = "Jira Issues Report: " + args.customer + " " + args.description
@@ -156,7 +189,7 @@ message["Subject"] = subject
 # add body as defined above
 message.attach(MIMEText(body, "plain"))
 
-# Read CSV and add ass attachment
+# Read Excel and add as attachment
 filename = outputFileName
 with open(filename, "rb") as fil:
     part = MIMEApplication(fil.read(),Name=basename(filename))
@@ -175,3 +208,10 @@ except:
     server.close()
     sys.exit(1)
 server.close()
+
+# Cleanup
+if CLEANUP_FILE == True:
+    try:
+        os.remove(outputFileName)
+    except:
+        print("File cleanup failed", file=sys.stderr)

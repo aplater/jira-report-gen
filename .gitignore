@@ -170,6 +170,8 @@ $RECYCLE.BIN/
 
 # End of https://www.gitignore.io/api/windows,visualstudiocode
 
-# Ignore CSV outputs and debug JSON outputs
+# Ignore outputs and debug JSON outputs
 *.csv
+*.xls
+*.xlsx
 *.json
